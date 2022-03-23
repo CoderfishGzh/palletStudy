@@ -13,8 +13,9 @@ readme = 'README.md'
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
 
-[dev-dependencies.serde]
+[dependencies.serde]
 version = '1.0.126'
+optional = true
 
 [dev-dependencies.sp-core]
 default-features = false
@@ -33,6 +34,12 @@ default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'monthly-2021-08'
 version = '4.0.0-dev'
+
+[dependencies.sp-debug-derive]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+tag = 'monthly-2021-08'
+version = '3.0.0'
 
 [dependencies.codec]
 default-features = false
@@ -63,7 +70,9 @@ version = '4.0.0-dev'
 default = ['std']
 runtime-benchmarks = ['frame-benchmarking']
 std = [
+    'serde',
     'codec/std',
+    'sp-debug-derive/std',
     'frame-support/std',
     'frame-system/std',
     'frame-benchmarking/std',
