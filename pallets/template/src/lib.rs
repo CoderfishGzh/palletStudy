@@ -4,6 +4,10 @@
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://substrate.dev/docs/en/knowledgebase/runtime/frame>
 pub use pallet::*;
+pub use codec::{Decode, Encode};
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+use sp_debug_derive::RuntimeDebug;
 
 #[cfg(test)]
 mod mock;
@@ -14,8 +18,23 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+pub struct Order {
+    pub name : u32,
+}
+
+impl Order {
+    pub fn new(name : u32) -> Self{
+        Self {
+            name,
+        }
+    }
+}
+
+
 #[frame_support::pallet]
 pub mod pallet {
+    use super::*;
 	use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 	use frame_system::pallet_prelude::*;
 
@@ -36,7 +55,7 @@ pub mod pallet {
 	#[pallet::getter(fn something)]
 	// Learn more about declaring storage items:
 	// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
-	pub type Something<T> = StorageValue<_, u32>;
+	pub type Something<T> = StorageValue<_, Order>;
 
 	// gzh add 
     //购物车商品数量,不同id，对应不同的购物车
@@ -99,8 +118,10 @@ pub mod pallet {
 			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
 			let who = ensure_signed(origin)?;
 
+            let order = Order::new(something);
+
 			// Update storage.
-			<Something<T>>::put(something);
+			<Something<T>>::put(order);
 
 			// Emit an event.
 			Self::deposit_event(Event::SomethingStored(something, who));
@@ -229,9 +250,10 @@ pub mod pallet {
 				None => Err(Error::<T>::NoneValue)?,
 				Some(old) => {
 					// Increment the value read from storage; will error in the event of overflow.
-					let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
+					let new = old.name.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
 					// Update the value in storage with the incremented result.
-					<Something<T>>::put(new);
+
+					<Something<T>>::put(Order::new(new));
 					Ok(())
 				},
 			}
