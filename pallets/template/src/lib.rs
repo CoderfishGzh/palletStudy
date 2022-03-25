@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://substrate.dev/docs/en/knowledgebase/runtime/frame>
@@ -8,6 +9,7 @@ pub use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_debug_derive::RuntimeDebug;
+use frame_support::inherent::Vec;
 
 #[cfg(test)]
 mod mock;
@@ -18,6 +20,8 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+// struct example 
+// 需要加宏 并且为该结构体实现构造函数
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
 pub struct Order {
     pub name : u32,
@@ -26,13 +30,45 @@ pub struct Order {
 impl Order {
     pub fn new(name : u32) -> Self{
         Self {
-            name,
+            name
         }
     }
 }
 
+// what user buy
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+pub struct UserProduct {
+	pub productid : u32,
+    pub productnums :u32,
+} 
 
-#[frame_support::pallet]
+impl UserProduct {
+    pub fn new(id : u32, nums : u32) -> Self {
+        Self {
+            productid : id,
+            productnums : nums,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+pub struct User {
+    pub products : Vec<UserProduct>,
+    pub totalprice : u32,
+    pub totalnums : u32,
+}
+
+impl User {
+    pub fn new() -> Self {
+        Self{
+            products : Vec::new(),
+            totalprice : 0,
+            totalnums : 0,
+        }
+    }
+}
+
+#[frame_support::pallet] 
 pub mod pallet {
     use super::*;
 	use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
@@ -63,6 +99,16 @@ pub mod pallet {
     #[pallet::getter(fn totalnums)]
     pub type TotalNums<T : Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32>;
 
+    //每件商品对应的价格
+    #[pallet::storage]
+    #[pallet::getter(fn productprice)]
+    pub type ProductPrice<T> = StorageMap<_, Blake2_128Concat, u32, u32>;
+
+    //用户自己的购物车 已经添加的商品及商品数量
+    #[pallet::storage]
+    #[pallet::getter(fn user)]
+    pub type WhatUserBuy<T : Config> = StorageMap<_, Blake2_128Concat, T::AccountId, User>;
+
     //购物车总价格,不同id，对应不同的购物车
     #[pallet::storage]
     #[pallet::getter(fn totalprice)]
@@ -92,6 +138,24 @@ pub mod pallet {
         Addproduct(T::AccountId, u32),
         // user id, product id
         Removeproduct(T::AccountId, u32),
+        //商品id， 商品数量
+        Cannotremove(u32,u32),
+        //商人添加商品 用户id，商品id，商品价格
+        Bm_add_product(T::AccountId, u32, u32),
+        //找不到商品id
+        CanNotFindGoods(u32),
+        
+        Nothisuser(T::AccountId),
+
+        NothisGoods(u32),
+
+        Line223(),
+        Line231(),
+        Line242(),
+
+        Line290(),
+        Line309(),
+        Line315(),
 
 	}
 
@@ -127,59 +191,86 @@ pub mod pallet {
 			Self::deposit_event(Event::SomethingStored(something, who));
 			// Return a successful DispatchResultWithPostInfo
 			Ok(())
+
 		}
 
 
+        //商家添加货物
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        pub fn bm_add_product(origin: OriginFor<T>, products : u32, price : u32) -> DispatchResult {
+            
+            //如果商品 和 价格 都为 0 则报错
+            ensure!(price != 0 || products != 0, DispatchError::NoProviders);
+            
+            let who = ensure_signed(origin)?;
+
+            <ProductPrice<T>>::insert(products, price);
+          
+            Self::deposit_event(Event::Bm_add_product(who, products, price));
+
+            Ok(())
+        }
 
 		//gzh add 
-		//给自己账号添加商品
+		//客户账号添加商品
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-        pub fn addproduct(origin: OriginFor<T>, products : u32, price : u32) -> DispatchResult {
+        pub fn addproduct(origin: OriginFor<T>, products : u32) -> DispatchResult {
 
             let who = ensure_signed(origin)?;
 
-            //1.判断商品是否存在，存在->num + 1
-            //2.该用户总商品数量+1
-            //3.该用户总开销 + 该商品的价格
+            //1.判断该商品是否在  productprice上面
+            let goods = <ProductPrice<T>>::try_get(products);
+            match goods {
+                Ok(p) => {
+                    // 找到该货物
+                    //看该用户是否存在 WhatUserBuy
+                    let tuser = <WhatUserBuy<T>>::try_get(&who);
+                    match tuser {
+                        Ok(mut t) => {
+                            //用户存在
+                            for mut i in &mut t.products {
+                                //商品存在 修改 商品数量
+                                if i.productid == products {
+                                    let temp = &i.productnums;
+                                    i.productnums = temp + 1;
+                                    Self::deposit_event(Event::Addproduct(who.clone(), products));
+                                    Self::deposit_event(Event::Line223());
+                                    return Ok(());
+                                }
+                            }
+                            //商品不存在 直接插入商品
+                            let newUserProduct = UserProduct::new(products, p);
+                            t.products.push(newUserProduct);
+                            t.totalnums = t.totalnums + 1;
+                            t.totalprice = t.totalprice + p;
+                            Self::deposit_event(Event::Addproduct(who.clone(), products));
+                            Self::deposit_event(Event::Line231());
+                            return Ok(());
+                        }
 
-            let temp = <Products<T>>::try_get(who.clone(), products);
-            match temp {
-                Ok(t) => {
-                    <Products<T>>::remove(who.clone(), products);
-                    <Products<T>>::insert(who.clone(), products, t + 1);
-                }
-                _ => {
-                    <Products<T>>::insert(who.clone(), products, 1);
-                }
-            }       
+                        _ => {
+                            //不存在直接添加
+                            let mut newuser = User::new();
+                            let newUserProduct = UserProduct::new(products, p);
+                            newuser.products.push(newUserProduct);
+                            newuser.totalnums = 1;
+                            newuser.totalprice = p;
+                            <WhatUserBuy<T>>::insert(who.clone(), newuser);
+                            Self::deposit_event(Event::Addproduct(who.clone(), products));
+                            Self::deposit_event(Event::Line242());
+                            return Ok(());
+                        }
+                    }
 
-            //增加who 商品总数量
-            let temp = <TotalNums<T>>::try_get(who.clone());
-            match temp {
-                Ok(t) => {
-                    <TotalNums<T>>::remove(who.clone());
-                    <TotalNums<T>>::insert(who.clone(), t + 1);
                 }
+                //找不到
                 _ => {
-                    <TotalNums<T>>::insert(who.clone(), 1);
+                    Self::deposit_event(Event::CanNotFindGoods(products));  
+                    return Ok(());
                 }
             }
-
-            //增加who 总金额
-            let temp = <TotalPrice<T>>::try_get(who.clone());
-            match temp {
-                Ok(t) => {
-                    <TotalPrice<T>>::remove(who.clone());
-                    <TotalPrice<T>>::insert(who.clone(), t + price);
-                }
-                _ => {
-                    //用户不存在 直接insert
-                    <TotalPrice<T>>::insert(who.clone(), price);
-                }
-            }
-
-            Self::deposit_event(Event::Addproduct(who.clone(), products));
-            Ok(())
+            //Self::deposit_event(Event::Addproduct(who.clone(), products));
+            //Ok(())
         }
 
         //给自己账号删除
@@ -188,50 +279,56 @@ pub mod pallet {
 
             let who = ensure_signed(origin)?;
 
-            //1.判断商品是否存在
-            //2.商品存在 数量-1， 数量为0直接删除
-            //3.商品不存在，无视操作
+            //用户是否存在
+            let usertemp = <WhatUserBuy<T>>::try_get(who.clone());
+            match usertemp {
+               
+                Ok(mut user) => {
+                    //用户存在，判断用户是都有这个商品
+                    for mut i in &mut user.products {
+                        //有这个商品
+                        if i.productid == products {
 
-            let temp = <Products<T>>::try_get(who.clone(), products);
-            match temp {
-                Ok(num) => {
-                    //user have this product
-                    // num == 1 remove 
-                    if num == 1 {
-                        <Products<T>>::remove(who.clone(), products);
-                    } else {
-                        <Products<T>>::remove(who.clone(), products);
-                        <Products<T>>::insert(who.clone(), products, num - 1);
+                            if i.productnums == 0 {
+                                Self::deposit_event(Event::CanNotFindGoods(products));
+                                Self::deposit_event(Event::Line290());
+                                return Ok(());
+                            } else {
+                                let p = <ProductPrice<T>>::get(products);
+                                match p {
+
+                                    Some(pricetemp) => {
+                                        user.totalprice -= pricetemp;
+                                    }
+                                    _ => {
+                                    //肯定会存在 所以这里不做任何事
+                                    //TODO
+                                    //有更好的语法 if let
+                                    }
+                                
+                            }
+
+                            i.productnums = i.productnums - 1;
+                            Self::deposit_event(Event::Removeproduct(who.clone(), products));
+                            Self::deposit_event(Event::Line309());
+                            return Ok(());
+                            }
+
+                            
+                        }
                     }
 
-                    //  减少 用户总数量
-                    //  已经存在于products map 里面 直接把总数量减一即可
-                    let products_nums = <TotalNums<T>>::get(who.clone());
-                    match products_nums {
-                        Some(nums) => {
-                            <TotalNums<T>>::remove(who.clone());
-                            <TotalNums<T>>::insert(who.clone(), nums - 1);
-                        }
-                        _ => {
-                            //不做任何事
-                        }
-                    }
-
-
-                    // 减少用户总开销
-                    // TODO
-                    // 增加一个map 存储  商品id ： 价钱
+                    //商品不存在 不能减
+                    Self::deposit_event(Event::CanNotFindGoods(products));
+                    Self::deposit_event(Event::Line315());
+                    return Ok(());
                 }
                 _ => {
-                    //该user 没有这个商品 无视操作
+                    Self::deposit_event(Event::Nothisuser(who.clone()));
+                    return Ok(());
                 }
             }
-
-
-            //发送 删除商品事件
-            Self::deposit_event(Event::Removeproduct(who.clone(), products));
-
-            Ok(())
+           
         }
 
 
